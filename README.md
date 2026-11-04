@@ -21,6 +21,15 @@ api-server/
   routes/tournaments.mjs     public reads + admin create/update/archive
   routes/registrations.mjs   public register/lookup + admin list/detail/status
   routes/recruitment.mjs     recruitment config + member applications
+  routes/members.mjs         member directory, photo submission/review, CSV import, window
+  routes/uploads.mjs         base64 image uploads to Cloudinary (admin)
+  routes/bootstrap.mjs       public page bootstrap (tournaments + recruitment)
+  routes/overview.mjs        admin console aggregate
+  members.mjs                member data access + serializers
+  memberModels.mjs           member + achievement + settings schemas
+  memberCsv.mjs              CSV sheet parser used by the import
+  cloudinary.mjs             signed Cloudinary uploads
+  images.mjs                 image magic-byte + dimension validation
   scripts/migrate-registrations.mjs
 ```
 
@@ -70,6 +79,10 @@ Public (API key only):
 - `GET /api/tournaments/:slug/registrations` (redacted summary)
 - `GET /api/tournaments/:slug/registrations/:id` (roster + in-game IDs, no PII)
 - `GET /api/recruitment`, `POST /api/recruitment/apply`
+- `GET /api/bootstrap` (tournaments + recruitment for the public site)
+- `GET /api/members`, `GET /api/members/:publicId`
+- `GET /api/members/window`, `GET /api/members/lookup?q=`
+- `POST /api/members/photo` — `{ publicId, studentId, file: dataUrl }`
 
 Admin (API key + `x-admin-token`):
 
@@ -80,6 +93,23 @@ Admin (API key + `x-admin-token`):
 - `DELETE /api/admin/registrations/:id` (frees the slot)
 - `GET /api/admin/applications`, `PATCH /api/admin/applications/:id`, `DELETE /api/admin/applications/:id`
 - `PUT /api/recruitment`
+- `GET /api/admin/overview`
+- `POST /api/uploads/image` — `{ file: dataUrl, folder }`
+- `GET /api/admin/members`, `POST /api/admin/members/import`
+- `GET|PATCH /api/admin/members/window`
+- `PATCH /api/admin/members/:publicId/photo`
+
+Member directory, imports, photo review and uploads require a **superadmin**
+role in the admin token; tournament admin routes accept `admin` too. The role is
+minted into the token by `/api/backend-token` from the Better Auth account, so a
+browser cannot promote itself.
+
+## Images
+
+The browser sends images as base64 data URLs (`POST /api/uploads/image`,
+`POST /api/members/photo`). The server sniffs the magic bytes, checks the
+dimensions, then signs and performs the Cloudinary upload itself. Member photos
+are normalised to a 600×600 face crop; banners keep their original framing.
 
 ## Migration notes
 
@@ -88,4 +118,62 @@ collection and leaves the arrays in place as a backup. Re-running is safe
 (entries are matched by pass code, or by team name when a legacy entry has no
 pass code). Once the data is verified, run `npm run api:migrate` without the
 flag to unset the embedded arrays.
-"# cuec-server" 
+
+## Deploying the server
+
+Railway (or Render/Fly/any VPS) is the right home for this process: it is a
+long-lived Express server with a persistent MongoDB connection, an in-memory
+rate limiter and 8 MB JSON bodies. Vercel Functions do not fit it well — see
+below.
+
+### Railway (recommended)
+
+This folder ships `package.json` (deps + `start` script) and `railway.json`
+(Nixpacks build, start command, health check, restart policy).
+
+1. New Project → **Deploy from GitHub repo** → pick the server repo.
+2. If the API sits inside a monorepo, set **Root Directory** to `api-server`.
+3. Add the variables below, then deploy. Railway injects `PORT`; the server
+   prefers `PORT` over `API_PORT`, so no extra configuration is needed.
+4. Settings → Networking → **Generate Domain** (or attach `api.example.com`).
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `MONGODB_URI` | yes | Atlas connection string; allow Railway's IPs (`0.0.0.0/0`) in Atlas. |
+| `MONGO_DB_NAME` | no | Defaults to `CUEC`. |
+| `API_KEY` | yes | 16+ chars, must equal the site's `API_KEY` / `NEXT_PUBLIC_API_KEY`. |
+| `ADMIN_TOKEN_SECRET` | yes | 32+ chars, identical on the API and the Next app. |
+| `ALLOWED_ORIGINS` | yes | The deployed site origin, e.g. `https://cuec.club` (comma-separated for previews). |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | for uploads | Or `CLOUDINARY_UPLOAD_PRESET` for unsigned presets. |
+| `MEMBER_VERIFY_SECRET` | no | Falls back to `BETTER_AUTH_SECRET`. |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `SITE_URL` | no | Email notifications. |
+
+After the first deploy, point the Next app at it: `NEXT_PUBLIC_API_BASE_URL`
+(browser) and `API_BASE_URL` (server components), both `https://api.example.com`.
+
+### Vercel
+
+Not recommended for this server. A Next.js deployment on Vercel does not run a
+second long-lived Node process; you would have to wrap Express in an
+`api/index.js` function plus a `vercel.json` rewrite, and then live with:
+
+- a **4.5 MB request/response body limit** (Functions), which rejects the ~8 MB
+  base64 member photos before your code sees them;
+- per-invocation cold starts and a fresh MongoDB connection each time;
+- the in-memory rate limiter resetting between invocations.
+
+If you must use Vercel, move photos to signed direct-to-Cloudinary uploads first
+and shrink the body cap. Hosting the API on Railway/Render/Fly keeps today's code
+unchanged.
+
+### Keeping it alive
+
+`GET /api/ping` (alias `/ping`) is a liveness probe: no database call, no API
+key, `Cache-Control: no-store`. `/health` stays the readiness probe and reports
+`database: "connected" | "disconnected"`.
+
+Railway runs the container continuously, so the process does not sleep on paid
+plans. Still point a free monitor at the ping URL every 5 minutes — UptimeRobot,
+Better Stack, cron-job.org — to catch outages and to keep the container warm
+right after a redeploy. Railway's own health check uses `/api/ping` too, so a
+transient Mongo outage does not fail a deployment.

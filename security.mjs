@@ -111,11 +111,12 @@ function sign(payload) {
   return crypto.createHmac('sha256', adminTokenSecret).update(payload).digest('hex');
 }
 
-export function issueAdminToken(subject, ttlMs = ADMIN_TOKEN_TTL_MS) {
+export function issueAdminToken(subject, role = 'admin', ttlMs = ADMIN_TOKEN_TTL_MS) {
   const issuedAt = Date.now();
   const expiresAt = issuedAt + ttlMs;
   const nonce = crypto.randomBytes(10).toString('hex');
-  const payload = `cuec-api.${sanitizeText(subject, 80) || 'admin'}.${issuedAt}.${expiresAt}.${nonce}`;
+  const safeRole = role === 'superadmin' ? 'superadmin' : 'admin';
+  const payload = `cuec-api.${safeRole}.${sanitizeText(subject, 80) || 'admin'}.${issuedAt}.${expiresAt}.${nonce}`;
   return Buffer.from(`${payload}.${sign(payload)}`, 'utf8').toString('base64url');
 }
 
@@ -124,9 +125,10 @@ export function verifyAdminToken(rawToken) {
   try {
     const decoded = Buffer.from(rawToken, 'base64url').toString('utf8');
     const parts = decoded.split('.');
-    if (parts.length !== 6) return null;
-    const [prefix, subject, issuedStr, expiresStr, nonce, providedSig] = parts;
+    if (parts.length !== 7) return null;
+    const [prefix, role, subject, issuedStr, expiresStr, nonce, providedSig] = parts;
     if (prefix !== 'cuec-api' || !nonce || !providedSig) return null;
+    if (role !== 'admin' && role !== 'superadmin') return null;
 
     const issuedAt = Number(issuedStr);
     const expiresAt = Number(expiresStr);
@@ -135,14 +137,14 @@ export function verifyAdminToken(rawToken) {
     if (now > expiresAt) return null;
     if (expiresAt - issuedAt > ADMIN_TOKEN_TTL_MS + 60_000) return null;
 
-    const payload = `${prefix}.${subject}.${issuedStr}.${expiresStr}.${nonce}`;
+    const payload = `${prefix}.${role}.${subject}.${issuedStr}.${expiresStr}.${nonce}`;
     const expected = sign(payload);
     const providedBuf = Buffer.from(providedSig, 'utf8');
     const expectedBuf = Buffer.from(expected, 'utf8');
     if (providedBuf.length !== expectedBuf.length) return null;
     if (!crypto.timingSafeEqual(providedBuf, expectedBuf)) return null;
 
-    return { subject, expiresAt };
+    return { subject, role, expiresAt };
   } catch {
     return null;
   }

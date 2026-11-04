@@ -19,6 +19,10 @@ import {
   publicRegistrationsRouter,
 } from './routes/registrations.mjs';
 import { adminApplicationsRouter, recruitmentRouter } from './routes/recruitment.mjs';
+import { adminMembersRouter, publicMembersRouter } from './routes/members.mjs';
+import { uploadsRouter } from './routes/uploads.mjs';
+import { bootstrapRouter } from './routes/bootstrap.mjs';
+import { adminOverviewRouter } from './routes/overview.mjs';
 
 assertConfig();
 
@@ -31,6 +35,14 @@ export function createApp() {
 
   app.use(securityHeaders);
   app.use(cors({ origin: corsOptions, methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'] }));
+
+  // Base64 image uploads carry large bodies, so their router installs its own
+  // sized JSON parser before the small global one below.
+  app.use('/api/uploads', uploadsRouter);
+
+  // Member ID photos are sent as ~7 MB base64 JSON; everything else stays
+  // under the 96 kB cap imposed below.
+  app.use('/api/members/photo', express.json({ limit: '8mb' }));
 
   // JSON only, hard size cap: registration bodies are small.
   app.use(express.json({ limit: '96kb' }));
@@ -45,6 +57,19 @@ export function createApp() {
     });
   });
 
+  // Lightweight liveness probe for uptime monitors and platform health checks.
+  // No database call and no API key, so it stays fast and cheap to ping.
+  app.get(['/ping', '/api/ping'], (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      ok: true,
+      service: 'cuec-api',
+      message: 'pong',
+      timestamp: new Date().toISOString(),
+      uptimeSeconds: Math.round(process.uptime()),
+    });
+  });
+
   // Every API route below requires the client API key and a trusted origin
   // for mutations. Admin-only routes additionally require an admin token.
   const api = express.Router();
@@ -55,6 +80,8 @@ export function createApp() {
   api.use('/tournaments', tournamentsRouter);
   api.use(publicRegistrationsRouter);
   api.use('/recruitment', recruitmentRouter);
+  api.use('/members', publicMembersRouter);
+  api.use(bootstrapRouter);
 
   const admin = express.Router();
   admin.use(requireApiKey);
@@ -62,6 +89,8 @@ export function createApp() {
   admin.use(rateLimit('admin', 240, 60_000));
   admin.use('/registrations', adminRegistrationsRouter);
   admin.use('/applications', adminApplicationsRouter);
+  admin.use('/members', adminMembersRouter);
+  admin.use(adminOverviewRouter);
 
   api.use('/admin', admin);
   app.use('/api', api);

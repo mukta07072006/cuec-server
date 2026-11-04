@@ -107,7 +107,18 @@ export function requireAdmin(req, res, next) {
     return next(new ApiError(401, 'Admin authorization required. Please sign in again.'));
   }
   req.admin = { subject: verified.subject, via: 'admin-token' };
+  req.admin.role = verified.role;
   return next();
+}
+
+/**
+ * Stricter gate for the member directory, CSV import, photo review and uploads:
+ * only a `superadmin` session (or the service key) passes.
+ */
+export function requireSuperAdmin(req, res, next) {
+  if (req.admin?.via === 'service-key') return next();
+  if (req.admin?.role === 'superadmin') return next();
+  return next(new ApiError(403, 'Superadmin access required.'));
 }
 
 /** Per-route sliding window limiter; returns 429 with Retry-After. */

@@ -12,7 +12,8 @@ const trim = (value) => (typeof value === 'string' ? value.trim() : '');
 
 export const isProduction = process.env.NODE_ENV === 'production';
 
-export const port = Number(trim(process.env.API_PORT) || 4000);
+// Railway/Render/Heroku inject PORT; API_PORT stays the local override.
+export const port = Number(trim(process.env.PORT) || trim(process.env.API_PORT) || 4000);
 
 export const mongoUri = trim(process.env.MONGODB_URI);
 export const mongoDbName = trim(process.env.MONGO_DB_NAME) || 'CUEC';
@@ -35,6 +36,19 @@ export const allowedOrigins = trim(process.env.ALLOWED_ORIGINS || 'http://localh
 export const resendApiKey = trim(process.env.RESEND_API_KEY);
 export const emailFrom = trim(process.env.EMAIL_FROM) || 'CU Esports Club <no-reply@cuec.club>';
 export const siteUrl = trim(process.env.SITE_URL) || 'http://localhost:3000';
+
+/** Cloudinary (tournament banners + member ID photos). Optional but needed for uploads. */
+export const cloudinaryCloudName = trim(process.env.CLOUDINARY_CLOUD_NAME);
+export const cloudinaryApiKey = trim(process.env.CLOUDINARY_API_KEY);
+export const cloudinaryApiSecret = trim(process.env.CLOUDINARY_API_SECRET);
+export const cloudinaryUploadPreset = trim(process.env.CLOUDINARY_UPLOAD_PRESET);
+
+/**
+ * Secret hashing CU student IDs for photo verification. Falls back to the auth
+ * secret so hashes generated before the server split stay comparable.
+ */
+export const memberVerifySecret =
+  trim(process.env.MEMBER_VERIFY_SECRET) || trim(process.env.BETTER_AUTH_SECRET);
 
 export const ADMIN_TOKEN_TTL_MS = 5 * 60 * 1000;
 

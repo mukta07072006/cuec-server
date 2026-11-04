@@ -1,0 +1,22 @@
+{
+  "name": "cuec-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CU Esports Club data API — Express + MongoDB for the Next.js site.",
+  "type": "module",
+  "main": "index.mjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node index.mjs",
+    "dev": "node --watch index.mjs",
+    "migrate:registrations": "node scripts/migrate-registrations.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.3.0",
+    "mongoose": "^9.11.4"
+  }
+}

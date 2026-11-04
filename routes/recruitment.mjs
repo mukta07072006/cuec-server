@@ -17,9 +17,34 @@ export const adminApplicationsRouter = Router();
 
 const SINGLETON = 'active_recruitment';
 
+/** Seeded on first read so a fresh database never 404s the public /join page. */
+const DEFAULT_RECRUITMENT = {
+  singletonKey: SINGLETON,
+  isOpen: true,
+  title: 'Autumn 2026 Club & Executive Wing Recruitment',
+  sessionLabel: 'Session 2026–27',
+  deadlineLabel: 'Nov 25, 2026 · 11:59 PM',
+  announcement:
+    'Applications are officially open for University of Chittagong students across all faculties! Join our competitive rosters, live broadcast desk, tournament referee corps, or creative media team.',
+  openWings: [
+    'Competitive Player',
+    'Broadcast & Shoutcasting',
+    'Tournament Operations & Referee',
+    'Graphic Design & Production',
+    'Social Media & Community Management',
+  ],
+  requirements: [
+    'Must be a currently enrolled student at the University of Chittagong with a valid Student ID.',
+    'Commitment to fair play, campus sportsmanship, and active Discord communication.',
+    'Prior tournament or production experience is a bonus, but beginners are welcome.',
+  ],
+};
+
 async function getRecruitment() {
   const existing = await RecruitmentModel.findOne({ singletonKey: SINGLETON }).lean();
-  return existing;
+  if (existing) return existing;
+  const created = await RecruitmentModel.create(DEFAULT_RECRUITMENT);
+  return created.toObject();
 }
 
 recruitmentRouter.get(
@@ -27,8 +52,6 @@ recruitmentRouter.get(
   requireApiKey,
   asyncHandler(async (req, res) => {
     const recruitment = await getRecruitment();
-    if (!recruitment) throw new ApiError(404, 'Recruitment configuration not found.');
-
     res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=60');
     res.json({
       recruitment: { ...recruitment, _id: String(recruitment._id) },
@@ -50,8 +73,6 @@ recruitmentRouter.put(
       : [];
 
     const current = await getRecruitment();
-    if (!current) throw new ApiError(404, 'Recruitment configuration not found.');
-
     const updated = await RecruitmentModel.findOneAndUpdate(
       { singletonKey: SINGLETON },
       {

@@ -1,2 +1,6 @@
 .env
 !.env.example
+node_modules/
+*.log
+server.log
+.DS_Store
