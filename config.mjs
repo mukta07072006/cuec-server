@@ -18,6 +18,42 @@ export const port = Number(trim(process.env.PORT) || trim(process.env.API_PORT) 
 export const mongoUri = trim(process.env.MONGODB_URI);
 export const mongoDbName = trim(process.env.MONGO_DB_NAME) || 'CUEC';
 
+/**
+ * Hosts from the connection string, credentials stripped. Handles both forms:
+ * `mongodb+srv://user:pass@cluster0.abcde.mongodb.net/db` and the multi-shard
+ * `mongodb://user:pass@h1:27017,h2:27017,h3:27017/db?ssl=true`. The last `@`
+ * wins so an unencoded password containing `@` cannot truncate the host.
+ */
+export function mongoHosts() {
+  if (!mongoUri) return [];
+  const withoutScheme = mongoUri.replace(/^mongodb(\+srv)?:\/\//i, '');
+  const at = withoutScheme.lastIndexOf('@');
+  const afterCredentials = at === -1 ? withoutScheme : withoutScheme.slice(at + 1);
+  return afterCredentials
+    .split(/[/?]/)[0]
+    .split(',')
+    .map((host) => host.split(':')[0].trim())
+    .filter(Boolean);
+}
+
+/** Safe for logs: hostnames only, never the username or password. */
+export const mongoHostLabel = mongoHosts().join(', ') || '(no host in MONGODB_URI)';
+
+/**
+ * True for the host used in this repo's examples. A real Atlas host always has
+ * a generated subdomain (`cluster0.znex6tg.mongodb.net`), so the bare
+ * `cluster.mongodb.net` can only come from a copied template.
+ */
+export function isPlaceholderMongoHost() {
+  return mongoHosts().some(
+    (host) =>
+      /^(cluster|cluster0|host|example|your-cluster)\.mongodb\.net$/i.test(host) ||
+      host.includes('xxxxx') ||
+      host.includes('<') ||
+      host.includes('>')
+  );
+}
+
 /** Public client key. Shipped to the browser, so it guards volume, not secrets. */
 export const clientApiKey = trim(process.env.API_KEY);
 
@@ -59,6 +95,12 @@ export const ADMIN_TOKEN_TTL_MS = 5 * 60 * 1000;
 export function assertConfig() {
   const problems = [];
   if (!mongoUri) problems.push('MONGODB_URI is required (MongoDB connection string).');
+  if (mongoUri && isPlaceholderMongoHost()) {
+    problems.push(
+      `MONGODB_URI uses the example host ${mongoHostLabel}, which does not exist. ` +
+        'Copy the real string from MongoDB Atlas → Connect → Drivers and replace the whole value.'
+    );
+  }
   if (clientApiKey.length < 16) {
     problems.push('API_KEY is required and must be at least 16 characters.');
   }

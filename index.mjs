@@ -3,7 +3,7 @@ import cors from 'cors';
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { allowedOrigins, assertConfig, isProduction, port } from './config.mjs';
+import { allowedOrigins, assertConfig, isProduction, mongoHostLabel, port } from './config.mjs';
 import { connectDatabase, isDatabaseReady } from './db.mjs';
 import {
   ApiError,
@@ -137,6 +137,8 @@ if (isEntryPoint) {
   const server = app.listen(port, host, () => {
     console.log(`[api] CUEC API listening on http://${host}:${port}`);
     console.log(`[api] allowed origins: ${allowedOrigins.join(', ')}`);
+    // Hostnames only: makes a wrong connection string obvious in platform logs.
+    console.log(`[api] MongoDB target: ${mongoHostLabel}`);
   });
 
   connectDatabase()
