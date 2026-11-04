@@ -151,6 +151,29 @@ This folder ships `package.json` (deps + `start` script) and `railway.json`
 After the first deploy, point the Next app at it: `NEXT_PUBLIC_API_BASE_URL`
 (browser) and `API_BASE_URL` (server components), both `https://api.example.com`.
 
+### Render
+
+Render runs the same `node index.mjs` with `PORT` injected, so no code change is
+needed:
+
+- **Root Directory:** `api-server` when the repo also holds the Next app;
+  otherwise leave it blank.
+- **Build Command:** `npm install` (nothing is compiled — do not use `npm ci`
+  unless `package-lock.json` is committed).
+- **Start Command:** `node index.mjs`.
+- **Health Check Path:** `/api/ping`.
+- **Environment:** set the variables in the table above in the dashboard. A
+  committed `.env` is not deployed (and must not be), so a missing variable
+  fails startup with `API server configuration error` naming exactly which one.
+- **MongoDB Atlas:** Render's egress IPs are dynamic on the free plan, so add
+  `0.0.0.0/0` under Atlas → Network Access, or the container exits on
+  `MongoDB connection failed` after a brief restart loop.
+
+If startup ends with `Application exited early` and no error line, the process
+finished without listening — check that the start command is `node index.mjs`
+from the directory that actually contains it. Free instances sleep after 15
+minutes idle; a 5-minute ping also keeps them warm.
+
 ### Vercel
 
 Not recommended for this server. A Next.js deployment on Vercel does not run a

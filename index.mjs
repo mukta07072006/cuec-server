@@ -1,5 +1,8 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'node:path';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { allowedOrigins, assertConfig, isProduction, port } from './config.mjs';
 import { connectDatabase, isDatabaseReady } from './db.mjs';
 import {
@@ -101,13 +104,38 @@ export function createApp() {
   return app;
 }
 
-const isEntryPoint = process.argv[1]?.replace(/\\/g, '/').endsWith('api-server/index.mjs');
+/**
+ * True only when this file was started directly (`node index.mjs`), so importing
+ * it in a test or script does not spin up a listener.
+ *
+ * Compares resolved real paths instead of matching a suffix: hosts such as
+ * Railway/Render run `node index.mjs` with the app directory as cwd (and as the
+ * repo root when it is not a monorepo), so `argv[1]` has no `api-server/` prefix
+ * and a suffix check would silently skip startup.
+ */
+function resolveEntryPath(filePath) {
+  try {
+    return realpathSync(filePath);
+  } catch {
+    return path.resolve(filePath);
+  }
+}
+
+const normalizePath = (value) =>
+  process.platform === 'win32' ? value.toLowerCase() : value;
+
+const invokedFile = process.argv[1] ? normalizePath(resolveEntryPath(process.argv[1])) : '';
+const thisFile = normalizePath(resolveEntryPath(fileURLToPath(import.meta.url)));
+const isEntryPoint = invokedFile !== '' && invokedFile === thisFile;
 
 if (isEntryPoint) {
   const app = createApp();
 
-  const server = app.listen(port, () => {
-    console.log(`[api] CUEC API listening on http://localhost:${port}`);
+  // Bind all interfaces: platform routers (Railway/Render) reach the container
+  // from outside, so a loopback-only listener fails its health check.
+  const host = process.env.HOST?.trim() || '0.0.0.0';
+  const server = app.listen(port, host, () => {
+    console.log(`[api] CUEC API listening on http://${host}:${port}`);
     console.log(`[api] allowed origins: ${allowedOrigins.join(', ')}`);
   });
 
