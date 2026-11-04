@@ -174,6 +174,13 @@ finished without listening — check that the start command is `node index.mjs`
 from the directory that actually contains it. Free instances sleep after 15
 minutes idle; a 5-minute ping also keeps them warm.
 
+`MongoDB connection failed: querySrv ENOTFOUND _mongodb._tcp.<host>` means the
+hostname in `MONGODB_URI` does not exist — almost always a redacted placeholder
+such as `cluster.mongodb.net` instead of the real cluster host. Copy the string
+from Atlas → **Connect → Drivers**, paste it into the dashboard variable without
+surrounding quotes, and make sure the password is URL-encoded if it contains
+`@ : / # ? %`.
+
 ### Vercel
 
 Not recommended for this server. A Next.js deployment on Vercel does not run a
