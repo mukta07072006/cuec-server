@@ -16,7 +16,11 @@ uploadsRouter.use(requireApiKey);
 uploadsRouter.use(requireTrustedOrigin);
 uploadsRouter.use(rateLimit('uploads', 30, 60_000));
 
-const ALLOWED_FOLDERS = new Set(['cu-esports-club/tournaments', 'cu-esports-club/members']);
+const ALLOWED_FOLDERS = new Set([
+  'cu-esports-club/tournaments',
+  'cu-esports-club/members',
+  'cu-esports-club/recruitment',
+]);
 const MAX_BANNER_BYTES = 10 * 1024 * 1024;
 
 uploadsRouter.post(

@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import {
   generateSecureFourDigits,
   isValidSafeEmail,
+  sanitizeSafeImageUrl,
   sanitizeText,
 } from '../security.mjs';
 import {
@@ -38,7 +39,10 @@ const DEFAULT_RECRUITMENT = {
     'Commitment to fair play, campus sportsmanship, and active Discord communication.',
     'Prior tournament or production experience is a bonus, but beginners are welcome.',
   ],
+  headerImageUrl: '',
 };
+
+export const APPLICATION_DESIGNATIONS = ['HEAD', 'EXECUTIVE', 'ASSOCIATE'];
 
 async function getRecruitment() {
   const existing = await RecruitmentModel.findOne({ singletonKey: SINGLETON }).lean();
@@ -84,6 +88,7 @@ recruitmentRouter.put(
           announcement: sanitizeText(body.announcement, 1000, true) || current.announcement,
           openWings,
           requirements,
+          headerImageUrl: sanitizeSafeImageUrl(body.headerImageUrl),
         },
       },
       { new: true }
@@ -100,15 +105,53 @@ recruitmentRouter.post(
   asyncHandler(async (req, res) => {
     const body = req.body || {};
     const fullName = sanitizeText(body.fullName, 80);
+    const department = sanitizeText(body.department, 100);
+    const session = sanitizeText(body.session, 40);
     const studentId = sanitizeText(body.studentId, 32);
     const email = sanitizeText(body.email, 160);
+    const phone = sanitizeText(body.phone, 32);
+    const facebookUrl = sanitizeText(body.facebookUrl, 300);
+    const discordTag = sanitizeText(body.discordTag, 64);
+    const primaryGame = sanitizeText(body.primaryGame, 64);
     const wing = sanitizeText(body.wing, 80);
+    const designation = sanitizeText(body.designation, 40).toUpperCase();
+    const relevantSkills = sanitizeText(body.relevantSkills, 1000, true);
+    const previousExperience = sanitizeText(body.previousExperience, 1000, true);
+    const whyJoin = sanitizeText(body.whyJoin, 1000, true);
+    const weeklyCommitment = sanitizeText(body.weeklyCommitment, 60);
+    const offlineEvents = sanitizeText(body.offlineEvents, 40);
+    const motivation = sanitizeText(body.motivation, 1000, true);
 
-    if (!fullName || !studentId || !email || !wing) {
+    const missing = [
+      ['Full Name', fullName],
+      ['Department', department],
+      ['Session', session],
+      ['Student ID', studentId],
+      ['Email', email],
+      ['Number', phone],
+      ['Facebook Link', facebookUrl],
+      ['DC ID', discordTag],
+      ['Wing in CUEC', wing],
+      ['Designation', designation],
+      ['Esports Title', primaryGame],
+      ['Relevant skills / experience', relevantSkills],
+      ['Previous club / organization work', previousExperience],
+      ['Why you want to join', whyJoin],
+      ['Weekly commitment', weeklyCommitment],
+      ['Offline campus events', offlineEvents],
+      ['Competitive rank / portfolio', motivation],
+    ]
+      .filter(([, value]) => !value)
+      .map(([label]) => label);
+
+    if (missing.length > 0) {
       throw new ApiError(
         400,
-        'Full Name, CU Student ID, Email, and Wing selection are required.'
+        `Please complete every field (type N/A in the question fields if it does not apply): ${missing.join(', ')}.`
       );
+    }
+    if (!APPLICATION_DESIGNATIONS.includes(designation)) {
+      throw new ApiError(400, 'Designation must be HEAD, EXECUTIVE, or ASSOCIATE.');
     }
     if (!isValidSafeEmail(email)) {
       throw new ApiError(400, 'Please provide a valid email address.');
@@ -123,17 +166,21 @@ recruitmentRouter.post(
       memberCode: `CU-${new Date().getFullYear()}-${generateSecureFourDigits()}`,
       fullName,
       studentId,
-      department: sanitizeText(body.department, 100) || 'University of Chittagong',
+      department,
+      session,
       email,
-      discordTag: sanitizeText(body.discordTag, 64),
-      primaryGame: sanitizeText(body.primaryGame, 64) || 'Valorant',
+      phone,
+      facebookUrl,
+      discordTag,
+      primaryGame,
       wing,
-      motivation: sanitizeText(body.motivation, 1000, true),
-      relevantSkills: sanitizeText(body.relevantSkills, 1000, true),
-      previousExperience: sanitizeText(body.previousExperience, 1000, true),
-      whyJoin: sanitizeText(body.whyJoin, 1000, true),
-      weeklyCommitment: sanitizeText(body.weeklyCommitment, 60),
-      offlineEvents: sanitizeText(body.offlineEvents, 40),
+      designation,
+      motivation,
+      relevantSkills,
+      previousExperience,
+      whyJoin,
+      weeklyCommitment,
+      offlineEvents,
       status: 'Pending',
     });
 

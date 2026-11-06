@@ -161,6 +161,7 @@ const RecruitmentSchema = new mongoose.Schema(
     announcement: { type: String, required: true },
     openWings: { type: [String], default: [] },
     requirements: { type: [String], default: [] },
+    headerImageUrl: { type: String, default: '' },
   },
   { timestamps: true }
 );
@@ -171,10 +172,14 @@ const MemberApplicationSchema = new mongoose.Schema(
     fullName: { type: String, required: true },
     studentId: { type: String, required: true },
     department: { type: String, required: true },
+    session: { type: String, default: '', maxlength: 40 },
     email: { type: String, required: true },
+    phone: { type: String, default: '', maxlength: 32 },
+    facebookUrl: { type: String, default: '', maxlength: 300 },
     discordTag: { type: String, default: '' },
     primaryGame: { type: String, required: true },
     wing: { type: String, required: true },
+    designation: { type: String, default: '', maxlength: 40 },
     motivation: { type: String, default: '' },
     relevantSkills: { type: String, default: '', maxlength: 1000 },
     previousExperience: { type: String, default: '', maxlength: 1000 },
