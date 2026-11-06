@@ -114,6 +114,7 @@ recruitmentRouter.post(
     const discordTag = sanitizeText(body.discordTag, 64);
     const primaryGame = sanitizeText(body.primaryGame, 64);
     const wing = sanitizeText(body.wing, 80);
+    const preferredWing2 = sanitizeText(body.preferredWing2, 80);
     const designation = sanitizeText(body.designation, 40).toUpperCase();
     const relevantSkills = sanitizeText(body.relevantSkills, 1000, true);
     const previousExperience = sanitizeText(body.previousExperience, 1000, true);
@@ -131,7 +132,8 @@ recruitmentRouter.post(
       ['Number', phone],
       ['Facebook Link', facebookUrl],
       ['DC ID', discordTag],
-      ['Wing in CUEC', wing],
+      ['Preferred Wing 1', wing],
+      ['Preferred Wing 2', preferredWing2],
       ['Designation', designation],
       ['Esports Title', primaryGame],
       ['Relevant skills / experience', relevantSkills],
@@ -162,6 +164,14 @@ recruitmentRouter.post(
       throw new ApiError(400, 'Member recruitment is currently closed.');
     }
 
+    const openWings = Array.isArray(recruitment.openWings) ? recruitment.openWings : [];
+    if (openWings.length > 1 && wing === preferredWing2) {
+      throw new ApiError(
+        400,
+        'Preferred Wing 1 and Preferred Wing 2 must be two different wings.'
+      );
+    }
+
     const application = await MemberApplicationModel.create({
       memberCode: `CU-${new Date().getFullYear()}-${generateSecureFourDigits()}`,
       fullName,
@@ -174,6 +184,7 @@ recruitmentRouter.post(
       discordTag,
       primaryGame,
       wing,
+      preferredWing2,
       designation,
       motivation,
       relevantSkills,

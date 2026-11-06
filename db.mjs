@@ -179,6 +179,7 @@ const MemberApplicationSchema = new mongoose.Schema(
     discordTag: { type: String, default: '' },
     primaryGame: { type: String, required: true },
     wing: { type: String, required: true },
+    preferredWing2: { type: String, default: '' },
     designation: { type: String, default: '', maxlength: 40 },
     motivation: { type: String, default: '' },
     relevantSkills: { type: String, default: '', maxlength: 1000 },
