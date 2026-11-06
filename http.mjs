@@ -1,5 +1,10 @@
-import { allowedOrigins, isProduction } from './config.mjs';
-import { checkRateLimit, isClientApiKeyValid, isServiceKeyValid, verifyAdminToken } from './security.mjs';
+import { adminTokenSecretFingerprint, allowedOrigins, isProduction } from './config.mjs';
+import {
+  checkRateLimit,
+  isClientApiKeyValid,
+  isServiceKeyValid,
+  verifyAdminTokenDetailed,
+} from './security.mjs';
 
 export class ApiError extends Error {
   constructor(status, message, details) {
@@ -102,13 +107,45 @@ export function requireAdmin(req, res, next) {
   }
 
   const token = req.get('x-admin-token') || '';
-  const verified = verifyAdminToken(token);
-  if (!verified) {
+  const result = verifyAdminTokenDetailed(token);
+  if (!result.ok) {
+    logAdminTokenRejection(result.reason, req);
     return next(new ApiError(401, 'Admin authorization required. Please sign in again.'));
   }
-  req.admin = { subject: verified.subject, via: 'admin-token' };
-  req.admin.role = verified.role;
+
+  req.admin = { subject: result.token.subject, via: 'admin-token' };
+  req.admin.role = result.token.role;
   return next();
+}
+
+/**
+ * One rejected admin token per 10s per reason, so a client that retries in a
+ * loop cannot flood the platform logs. The line names the secret id this
+ * server signs with, which is what makes a two-deployment mismatch obvious:
+ * the Next app's `/api/backend-token` and this server must load the same
+ * ADMIN_TOKEN_SECRET.
+ */
+const ADMIN_REJECTION_LOG_INTERVAL_MS = 10_000;
+const lastAdminRejectionLogAt = new Map();
+
+function logAdminTokenRejection(reason, req) {
+  const now = Date.now();
+  if (now - (lastAdminRejectionLogAt.get(reason) || 0) < ADMIN_REJECTION_LOG_INTERVAL_MS) return;
+  lastAdminRejectionLogAt.set(reason, now);
+
+  const where = `${req.method} ${req.originalUrl || req.url}`;
+  const secretId = adminTokenSecretFingerprint || '(unset)';
+  const hint =
+    reason === 'signature-mismatch'
+      ? 'this server and the Next app are using different ADMIN_TOKEN_SECRET values — set the same value on both'
+      : reason === 'expired-token'
+        ? 'the token was valid but older than 5 minutes; the client must mint a fresh one'
+        : 'the client did not send a usable x-admin-token';
+
+  console.warn(
+    `[api] rejected admin token (${reason}) on ${where}; ` +
+      `this server signs with ADMIN_TOKEN_SECRET id ${secretId}: ${hint}.`
+  );
 }
 
 /**

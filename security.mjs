@@ -120,34 +120,61 @@ export function issueAdminToken(subject, role = 'admin', ttlMs = ADMIN_TOKEN_TTL
   return Buffer.from(`${payload}.${sign(payload)}`, 'utf8').toString('base64url');
 }
 
-export function verifyAdminToken(rawToken) {
-  if (!rawToken || typeof rawToken !== 'string' || rawToken.length > 700) return null;
+/**
+ * Same check as `verifyAdminToken`, but says *why* a token was rejected. The
+ * reason is safe to log: it distinguishes an expired token (the client should
+ * sign in again) from `signature-mismatch` (the two servers hold different
+ * ADMIN_TOKEN_SECRET values, which no amount of signing in will fix).
+ *
+ * @returns {{ ok: true, token: { subject: string, role: string, expiresAt: number } }
+ *   | { ok: false, reason: 'missing-token' | 'malformed-token' | 'bad-role'
+ *     | 'expired-token' | 'token-ttl-too-long' | 'signature-mismatch' }}
+ */
+export function verifyAdminTokenDetailed(rawToken) {
+  if (!rawToken || typeof rawToken !== 'string') return { ok: false, reason: 'missing-token' };
+  if (rawToken.length > 700) return { ok: false, reason: 'malformed-token' };
+
   try {
     const decoded = Buffer.from(rawToken, 'base64url').toString('utf8');
     const parts = decoded.split('.');
-    if (parts.length !== 7) return null;
+    if (parts.length !== 7) return { ok: false, reason: 'malformed-token' };
     const [prefix, role, subject, issuedStr, expiresStr, nonce, providedSig] = parts;
-    if (prefix !== 'cuec-api' || !nonce || !providedSig) return null;
-    if (role !== 'admin' && role !== 'superadmin') return null;
+    if (prefix !== 'cuec-api' || !nonce || !providedSig) {
+      return { ok: false, reason: 'malformed-token' };
+    }
+    if (role !== 'admin' && role !== 'superadmin') return { ok: false, reason: 'bad-role' };
 
     const issuedAt = Number(issuedStr);
     const expiresAt = Number(expiresStr);
     const now = Date.now();
-    if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)) return null;
-    if (now > expiresAt) return null;
-    if (expiresAt - issuedAt > ADMIN_TOKEN_TTL_MS + 60_000) return null;
+    if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)) {
+      return { ok: false, reason: 'malformed-token' };
+    }
+    if (now > expiresAt) return { ok: false, reason: 'expired-token' };
+    if (expiresAt - issuedAt > ADMIN_TOKEN_TTL_MS + 60_000) {
+      return { ok: false, reason: 'token-ttl-too-long' };
+    }
 
     const payload = `${prefix}.${role}.${subject}.${issuedStr}.${expiresStr}.${nonce}`;
     const expected = sign(payload);
     const providedBuf = Buffer.from(providedSig, 'utf8');
     const expectedBuf = Buffer.from(expected, 'utf8');
-    if (providedBuf.length !== expectedBuf.length) return null;
-    if (!crypto.timingSafeEqual(providedBuf, expectedBuf)) return null;
+    if (providedBuf.length !== expectedBuf.length) {
+      return { ok: false, reason: 'signature-mismatch' };
+    }
+    if (!crypto.timingSafeEqual(providedBuf, expectedBuf)) {
+      return { ok: false, reason: 'signature-mismatch' };
+    }
 
-    return { subject, role, expiresAt };
+    return { ok: true, token: { subject, role, expiresAt } };
   } catch {
-    return null;
+    return { ok: false, reason: 'malformed-token' };
   }
+}
+
+export function verifyAdminToken(rawToken) {
+  const result = verifyAdminTokenDetailed(rawToken);
+  return result.ok ? result.token : null;
 }
 
 /* ------------------------------------------------------------------ *

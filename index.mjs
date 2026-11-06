@@ -3,7 +3,15 @@ import cors from 'cors';
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { allowedOrigins, assertConfig, isProduction, mongoHostLabel, port } from './config.mjs';
+import {
+  adminTokenSecretFingerprint,
+  allowedOrigins,
+  assertConfig,
+  isPlaceholderAdminTokenSecret,
+  isProduction,
+  mongoHostLabel,
+  port,
+} from './config.mjs';
 import { connectDatabase, isDatabaseReady } from './db.mjs';
 import {
   ApiError,
@@ -139,6 +147,15 @@ if (isEntryPoint) {
     console.log(`[api] allowed origins: ${allowedOrigins.join(', ')}`);
     // Hostnames only: makes a wrong connection string obvious in platform logs.
     console.log(`[api] MongoDB target: ${mongoHostLabel}`);
+    // Compare this id with the Next app's value: a mismatch rejects every
+    // admin token, which the browser sees as a console that logs you out.
+    console.log(`[api] admin token secret id: ${adminTokenSecretFingerprint || '(unset)'}`);
+    if (isPlaceholderAdminTokenSecret()) {
+      console.warn(
+        '[api] WARNING: ADMIN_TOKEN_SECRET is still an example placeholder. ' +
+          'Admin requests will all fail with 401 until it is set to the same value as the Next app\'s ADMIN_TOKEN_SECRET.'
+      );
+    }
   });
 
   connectDatabase()

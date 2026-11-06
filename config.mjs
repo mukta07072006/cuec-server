@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import path from 'node:path';
 import dotenv from 'dotenv';
 
@@ -59,6 +60,36 @@ export const clientApiKey = trim(process.env.API_KEY);
 
 /** Shared secret used to verify short-lived admin tokens minted by the Next app. */
 export const adminTokenSecret = trim(process.env.ADMIN_TOKEN_SECRET);
+
+/**
+ * Short, non-reversible id for the admin token secret. Two deployments must
+ * load the *same* secret or every admin request 401s, so the API prints this id
+ * in its logs: compare it with the Next app's id to settle a mismatch without
+ * copying the secret anywhere.
+ */
+export const adminTokenSecretFingerprint = adminTokenSecret
+  ? crypto.createHash('sha256').update(adminTokenSecret, 'utf8').digest('hex').slice(0, 8)
+  : '';
+
+/**
+ * True when ADMIN_TOKEN_SECRET is still an example/placeholder value. Such a
+ * value passes the length check but can never match the real secret the Next
+ * app signs with, which is exactly the "admin console keeps signing me out"
+ * symptom: every admin request fails signature verification with 401.
+ */
+export function isPlaceholderAdminTokenSecret() {
+  const value = adminTokenSecret.toLowerCase();
+  if (!value) return false;
+  return (
+    value === 'replace-with-a-32-byte-random-secret' ||
+    value.startsWith('replace-with') ||
+    value.startsWith('your-') ||
+    value === 'changeme' ||
+    value.includes('<') ||
+    value.includes('>') ||
+    value.includes('example')
+  );
+}
 
 /** Server-to-server key (optional) for scripts and the migration tooling. */
 export const serviceApiKey = trim(process.env.SERVICE_API_KEY);

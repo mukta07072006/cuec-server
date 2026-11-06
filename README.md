@@ -181,6 +181,40 @@ from Atlas → **Connect → Drivers**, paste it into the dashboard variable wit
 surrounding quotes, and make sure the password is URL-encoded if it contains
 `@ : / # ? %`.
 
+### Admin console signs out in a loop (`/api/admin/*` 401)
+
+The public site works but every admin call returns `401 Admin authorization
+required. Please sign in again.` — the panel then sends the admin back to
+`/login`, and signing in lands them on the same 401 again.
+
+The admin token is an HMAC signed by the Next app with `ADMIN_TOKEN_SECRET` and
+verified here with the *same* variable. If the two deployments hold different
+values, every token is rejected and no amount of signing in helps. Common cause:
+the API still carries the example value `replace-with-a-32-byte-random-secret`
+from `.env.example`.
+
+Diagnose without copying secrets around: compare the secret ids that both sides
+log. The API prints one at startup and on each rejection —
+
+```
+[api] admin token secret id: 3ad279eb
+[api] rejected admin token (signature-mismatch) on GET /api/admin/overview; this server signs with ADMIN_TOKEN_SECRET id 3ad279eb: this server and the Next app are using different ADMIN_TOKEN_SECRET values — set the same value on both.
+```
+
+and the id is `sha256(secret)` truncated to 8 hex characters, so the Next app's
+value can be checked with one command:
+
+```bash
+node -e "console.log(require('crypto').createHash('sha256').update(process.env.ADMIN_TOKEN_SECRET,'utf8').digest('hex').slice(0,8))"
+```
+
+If the ids differ, set the identical `ADMIN_TOKEN_SECRET` (32+ random characters,
+`openssl rand -base64 48`) on **every** deployment that mints or verifies admin
+tokens — the Next app and this API — then restart both. Both servers also
+remember the secret id in their logs, so a restart is the quickest confirmation.
+Rejection reasons are logged at most once per 10s per reason, so a looping client
+cannot flood the platform logs.
+
 ### Vercel
 
 Not recommended for this server. A Next.js deployment on Vercel does not run a
