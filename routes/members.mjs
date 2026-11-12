@@ -1,5 +1,5 @@
 import express from 'express';
-import { ApiError, asyncHandler, rateLimit, requireAdmin, requireSuperAdmin } from '../http.mjs';
+import { ApiError, asyncHandler, rateLimit, requireAdmin } from '../http.mjs';
 import { sanitizeText } from '../security.mjs';
 import { parseMemberCsv } from '../memberCsv.mjs';
 import {
@@ -163,13 +163,13 @@ publicMembersRouter.get(
 );
 
 /* ------------------------------------------------------------------ *
- * Admin routes — mounted at /api/admin/members (superadmin only)
+ * Admin routes — mounted at /api/admin/members (admin and superadmin only;
+ * regular `user` accounts are rejected by requireAdmin)
  * ------------------------------------------------------------------ */
 
 export const adminMembersRouter = express.Router();
 
 adminMembersRouter.use(requireAdmin);
-adminMembersRouter.use(requireSuperAdmin);
 
 adminMembersRouter.get(
   '/',
