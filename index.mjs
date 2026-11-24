@@ -37,6 +37,22 @@ import { adminOverviewRouter } from './routes/overview.mjs';
 
 assertConfig();
 
+/**
+ * Serverless hosts (Vercel) import the app instead of running the listener at
+ * the bottom of this file, so the first API request has to open MongoDB itself.
+ * `connectDatabase()` caches its promise, so once connected this is a single
+ * `readyState` check per request.
+ */
+async function ensureDatabase(req, res, next) {
+  if (isDatabaseReady()) return next();
+  try {
+    await connectDatabase();
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
 export function createApp() {
   const app = express();
 
@@ -87,6 +103,8 @@ export function createApp() {
   api.use(requireApiKey);
   api.use(requireTrustedOrigin);
   api.use(rateLimit('api', 300, 60_000));
+  // After the key/origin checks, so rejected requests never touch MongoDB.
+  api.use(ensureDatabase);
 
   api.use('/tournaments', tournamentsRouter);
   api.use(publicRegistrationsRouter);
@@ -114,7 +132,7 @@ export function createApp() {
 
 /**
  * True only when this file was started directly (`node index.mjs`), so importing
- * it in a test or script does not spin up a listener.
+ * it in a test, a script or a Vercel Function does not spin up a listener.
  *
  * Compares resolved real paths instead of matching a suffix: hosts such as
  * Railway/Render run `node index.mjs` with the app directory as cwd (and as the
@@ -136,9 +154,13 @@ const invokedFile = process.argv[1] ? normalizePath(resolveEntryPath(process.arg
 const thisFile = normalizePath(resolveEntryPath(fileURLToPath(import.meta.url)));
 const isEntryPoint = invokedFile !== '' && invokedFile === thisFile;
 
-if (isEntryPoint) {
-  const app = createApp();
+/**
+ * One instance shared by both hosting styles: the long-lived listener for
+ * Render/Railway, and the default export that Vercel turns into a Function.
+ */
+const app = createApp();
 
+if (isEntryPoint) {
   // Bind all interfaces: platform routers (Railway/Render) reach the container
   // from outside, so a loopback-only listener fails its health check.
   const host = process.env.HOST?.trim() || '0.0.0.0';
@@ -177,4 +199,7 @@ if (isEntryPoint) {
   });
 }
 
+// Vercel's Express support detects this default export and serves every route
+// through one Function; importing the module there never starts the listener.
+export default app;
 export { ApiError };

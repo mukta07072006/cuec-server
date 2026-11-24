@@ -121,10 +121,10 @@ flag to unset the embedded arrays.
 
 ## Deploying the server
 
-Railway (or Render/Fly/any VPS) is the right home for this process: it is a
-long-lived Express server with a persistent MongoDB connection, an in-memory
-rate limiter and 8 MB JSON bodies. Vercel Functions do not fit it well — see
-below.
+The same file serves both hosting styles. Render/Railway/Fly run `node index.mjs`
+as a long-lived process with a persistent MongoDB connection; Vercel imports the
+app's default export as a single Function. Large uploads and the in-memory rate
+limiter behave differently on serverless — see [Vercel](#vercel).
 
 ### Railway (recommended)
 
@@ -217,18 +217,47 @@ cannot flood the platform logs.
 
 ### Vercel
 
-Not recommended for this server. A Next.js deployment on Vercel does not run a
-second long-lived Node process; you would have to wrap Express in an
-`api/index.js` function plus a `vercel.json` rewrite, and then live with:
+No second entry point and no `vercel.json` are needed. `index.mjs` default-exports
+the Express app (it only calls `app.listen` when it is the process entry point),
+which is the pattern Vercel's Express support detects, and every route is served
+by that one Function with the original URL intact. MongoDB is opened lazily per
+instance by an `ensureDatabase` middleware mounted after the API-key check, so a
+cold start does not wait for the database and rejected requests never touch it.
 
-- a **4.5 MB request/response body limit** (Functions), which rejects the ~8 MB
-  base64 member photos before your code sees them;
-- per-invocation cold starts and a fresh MongoDB connection each time;
-- the in-memory rate limiter resetting between invocations.
+1. **Add New… → Project** and import the repo that contains this folder.
+2. **Root Directory:** `api-server`.
+3. **Framework Preset:** Express (detected automatically). Leave Build Command
+   and Output Directory empty — Vercel installs `package.json` and bundles it.
+4. Add every variable from the table above to Production *and* Preview.
+   `PORT` is irrelevant here and can be left out.
+5. Deploy, then point the site at `https://<project>.vercel.app`
+   (`NEXT_PUBLIC_API_BASE_URL` for the browser, `API_BASE_URL` for server
+   components) and make sure that origin is listed in `ALLOWED_ORIGINS` on the
+   host the browser actually calls.
 
-If you must use Vercel, move photos to signed direct-to-Cloudinary uploads first
-and shrink the body cap. Hosting the API on Railway/Render/Fly keeps today's code
-unchanged.
+Use **`/api/ping`** as the health check (DB-free); `/health` also works and
+reports the Mongo state.
+
+What differs from Render/Railway:
+
+- **4.5 MB request body cap.** `/api/uploads` (tournament banner, recruitment
+  header) and `POST /api/members/photo` accept inline base64 images of 8–10 MB,
+  so those two calls return **413** on Vercel before Express runs. Every other
+  route is JSON under 96 kB and unaffected. Keep photo/banner uploads on
+  Render/Railway, or move them to direct-to-Cloudinary uploads before relying on
+  Vercel for a photo drive.
+- **One MongoDB connection per instance**, opened on the first request and
+  reused while the instance stays warm — expect a 1–3 s cold start after idling.
+- **The rate limiter is per instance** (in memory), so limits multiply across
+  concurrent instances; it still stops a single abusive client.
+- **No background work**: request-scoped code only, no long-lived timers.
+- `.env` / `.env.local` are not deployed; only dashboard variables exist there,
+  so `dotenv` finding no file is expected.
+
+A Render/Railway service can stay live alongside a Vercel one — both talk to the
+same MongoDB. Just keep `ADMIN_TOKEN_SECRET` and `API_KEY` identical on both, and
+remember that admin tokens are only valid on the host that holds the same
+secret.
 
 ### Keeping it alive
 
